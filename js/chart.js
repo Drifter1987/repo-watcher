@@ -201,7 +201,7 @@
       // series
       series.forEach(function (s, index) {
         var points = s.points;
-        var color = s.color || '#2fbf71';
+        var color = s.color || '#78e5b7';
         var line = '';
         points.forEach(function (p, k) {
           line += (k === 0 ? 'M' : 'L') + sx(p.t).toFixed(1) + ' ' + sy(p.v).toFixed(1) + ' ';
@@ -241,6 +241,28 @@
         );
       });
 
+      // A single observation has no line to draw, so mark its level instead of
+      // leaving a lone dot floating in the frame.
+      var pointCount = 0;
+      series.forEach(function (s) {
+        pointCount += s.points.length;
+      });
+      if (pointCount === 1) {
+        var onlyPoint = series[0].points[0];
+        svg.appendChild(
+          svgEl('line', {
+            x1: pad.left,
+            x2: width - pad.right,
+            y1: sy(onlyPoint.v),
+            y2: sy(onlyPoint.v),
+            stroke: series[0].color || '#78e5b7',
+            'stroke-width': 1,
+            'stroke-dasharray': '4 4',
+            opacity: 0.45
+          })
+        );
+      }
+
       // crosshair, markers and hit area
       var crosshair = svgEl('line', {
         x1: 0,
@@ -259,7 +281,7 @@
           cx: 0,
           cy: 0,
           r: 4,
-          fill: s.color || '#2fbf71',
+          fill: s.color || '#78e5b7',
           stroke: '#0b0f14',
           'stroke-width': 2,
           opacity: 0
@@ -321,7 +343,7 @@
           html +=
             '<div class="chart-tip-row">' +
             '<i style="background:' +
-            (s.color || '#2fbf71') +
+            (s.color || '#78e5b7') +
             '"></i>' +
             '<span>' +
             escapeHtml(s.label || '') +

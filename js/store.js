@@ -9,14 +9,18 @@
   var KEYS = {
     cache: 'ghw.cache.v1',
     series: 'ghw.series.v1',
-    settings: 'ghw.settings.v1'
+    settings: 'ghw.settings.v1',
+    ui: 'ghw.ui.v1'
   };
 
   var REFRESH_MS = 12 * 60 * 60 * 1000;
-  // 240 points is about four months at the 12-hour refresh; every repo above
-  // 100k stars is tracked, so each series has to stay lean.
-  var MAX_POINTS = 240;
   var MIN_POINT_GAP_MS = 60 * 60 * 1000;
+
+  // Points keep full resolution for a week, then one per calendar day, so a
+  // device can hold months of star history without filling its quota.
+  var FINE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  var MAX_POINTS = 400;
+  var MAX_TOTAL_POINTS = 32000;
 
   function read(key, fallback) {
     try {
@@ -72,6 +76,66 @@
     return out;
   }
 
+  function dayKey(t) {
+    var date = new Date(t);
+    return date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+  }
+
+  // Every point from the last week, then only the latest point of each
+  // calendar day, so the series stays continuous for as long as the app runs.
+  function compactPoints(points) {
+    var newest = points[points.length - 1];
+    if (!newest) return points;
+
+    var fineCutoff = newest.t - FINE_WINDOW_MS;
+    var daily = [];
+    var indexByDay = {};
+    var recent = [];
+
+    points.forEach(function (point) {
+      if (point.t >= fineCutoff) {
+        recent.push(point);
+        return;
+      }
+      var key = dayKey(point.t);
+      if (indexByDay[key] === undefined) {
+        indexByDay[key] = daily.length;
+        daily.push(point);
+      } else {
+        daily[indexByDay[key]] = point;
+      }
+    });
+
+    return daily.concat(recent);
+  }
+
+  function countPoints(series) {
+    var total = 0;
+    Object.keys(series).forEach(function (id) {
+      var entry = series[id];
+      if (entry && Array.isArray(entry.points)) total += entry.points.length;
+    });
+    return total;
+  }
+
+  // Keeps the whole store inside the quota: the oldest halves of the longest
+  // series are thinned until the total number of points fits.
+  function capTotal(series) {
+    var total = countPoints(series);
+    var guard = 0;
+    while (total > MAX_TOTAL_POINTS && guard < 6) {
+      guard += 1;
+      Object.keys(series).forEach(function (id) {
+        var entry = series[id];
+        if (entry && Array.isArray(entry.points) && entry.points.length > 30) {
+          entry.points = thin(entry.points);
+        }
+      });
+      total = countPoints(series);
+    }
+    return series;
+  }
+
   // localStorage has a few megabytes at most; when the write fails (a lot of
   // tracked repositories), halve the older half of every series and retry.
   function saveSeriesSafe(series) {
@@ -116,11 +180,11 @@
         last.f = repo.forks;
       }
 
-      entry.points = prune(entry.points);
+      entry.points = prune(compactPoints(entry.points));
       series[repo.id] = entry;
     });
 
-    return saveSeriesSafe(series);
+    return saveSeriesSafe(capTotal(series));
   }
 
   function getSettings() {
@@ -130,6 +194,17 @@
 
   function saveSettings(settings) {
     write(KEYS.settings, { token: (settings && settings.token) || '' });
+  }
+
+  // The view state (tab, filter text, open repository, chart controls and
+  // scroll offsets) so a reload lands exactly where the user left off.
+  function getUi() {
+    var ui = read(KEYS.ui, null);
+    return ui && typeof ui === 'object' ? ui : {};
+  }
+
+  function saveUi(ui) {
+    write(KEYS.ui, ui || {});
   }
 
   function clearSeries() {
@@ -150,6 +225,8 @@
     record: record,
     getSettings: getSettings,
     saveSettings: saveSettings,
+    getUi: getUi,
+    saveUi: saveUi,
     clearSeries: clearSeries
   };
 })(window);

@@ -35,13 +35,20 @@ under the header shows the next sync, and the refresh button forces one early.
 The cached lists survive a reload, so the app opens instantly.
 
 Each refresh appends a snapshot (timestamp, stars, forks) for every tracked
-repository to `localStorage`. Growth is computed between snapshots: a chip in
-the list shows the change over seven days (or since tracking started, labelled
-as such), and the detail chart draws the stored series. History is capped at
-240 points per repository, thinning the older half as it grows.
+repository to `localStorage`, so star history builds up on the device for as
+long as the app keeps being opened: full resolution for the last week, then one
+point per calendar day, with the oldest halves thinned if the store approaches
+the quota. Growth is computed between snapshots: a chip in the list shows the
+change over the last seven days (or the actual recorded span, labelled as
+such), and the detail chart draws the stored series plus the star or fork change
+across the selected range.
 
 Nothing is estimated or back-filled: the first snapshot starts the timeline,
-the second shows the first real delta.
+the second shows the first real delta. GitHub's free API exposes no star history,
+so real numbers can only be captured from the moment the app first runs.
+
+The tab, filter text, open repository, chart controls and scroll position are
+saved too, so a reload — or a background refresh — leaves the view where it was.
 
 ## Rate limits and the optional token
 

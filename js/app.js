@@ -90,11 +90,13 @@
     range: 'all',
     settings: { token: '' },
     rate: null,
-    lastAttempt: 0
+    lastAttempt: 0,
+    scroll: { list: 0, detail: 0 }
   };
 
   var els = {};
   var chart = null;
+  var uiSaveTimer = 0;
 
   /* ------------------------------ helpers ----------------------------- */
 
@@ -117,10 +119,6 @@
 
   function fmtDelta(value) {
     return (value > 0 ? '+' : '') + fmtNum(value);
-  }
-
-  function fmtDay(ts) {
-    return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
   function dateTime(ts) {
@@ -257,14 +255,17 @@
       }
     }
 
-    var label = '7d';
-    if (!base) {
-      base = points[0];
-      if (newest.t - base.t < 60 * 60000) return null;
-      label = 'since ' + fmtDay(base.t);
-    } else if (windowMs !== 7 * DAY) {
-      label = Math.round(windowMs / DAY) + 'd';
-    }
+    // With less history than the window, measure from the oldest snapshot so
+    // the label never claims a span the stored data does not cover.
+    if (!base) base = points[0];
+
+    var span = newest.t - base.t;
+    if (span < 30 * 60000) return null;
+
+    var label =
+      span >= 2 * DAY
+        ? Math.round(span / DAY) + 'd'
+        : Math.max(1, Math.round(span / 3600000)) + 'h';
 
     return { value: newest[key] - base[key], label: label, from: base.t, to: newest.t };
   }
@@ -412,7 +413,7 @@
     var field = state.metric;
     var deltaMode = state.mode === 'delta';
     var label = field === 's' ? 'Stars' : 'Forks';
-    var color = field === 's' ? '#e3b341' : '#58a6ff';
+    var color = field === 's' ? '#f2b45b' : '#78e5b7';
 
     var values = points.map(function (p) {
       return { t: p.t, v: p[field] };
@@ -445,21 +446,29 @@
       ariaLabel: label + ' of ' + repo.name + ' over time'
     });
 
+    var historyText;
     if (!all.length) {
-      els.chartNote.textContent = 'No history yet — the first snapshot is stored with the next sync.';
+      historyText = 'No history yet — the first snapshot is stored with the next sync.';
     } else if (all.length === 1) {
-      els.chartNote.textContent =
-        'Tracking since ' +
+      historyText =
+        'Recording since ' +
         dateTime(all[0].t) +
-        ' · one snapshot so far; growth appears after the next 12-hour refresh.';
+        ' · one snapshot saved on this device; growth appears after the next refresh.';
+    } else if (!points.length) {
+      historyText = 'No snapshots in this range — switch to “All tracked”.';
     } else {
-      els.chartNote.textContent =
-        'Tracking since ' +
-        dateTime(all[0].t) +
+      var change = points[points.length - 1][field] - points[0][field];
+      historyText =
+        points.length +
+        ' snapshots · ' +
+        dateTime(points[0].t) +
+        ' → ' +
+        dateTime(points[points.length - 1].t) +
         ' · ' +
-        all.length +
-        ' snapshots · updates every 12 hours';
+        fmtDelta(change) +
+        (field === 's' ? ' stars' : ' forks');
     }
+    els.chartNote.textContent = historyText;
   }
 
   function renderHistory() {
@@ -642,19 +651,89 @@
     });
   }
 
+  function syncTabs() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
+      var active = tab.getAttribute('data-tab') === state.tab;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  }
+
+  // Brings back the tab, filter text, open repository, chart controls and
+  // scroll offsets saved by the previous visit.
+  function restoreUi() {
+    var ui = Store.getUi() || {};
+
+    if (ui.tab === 'trending' || ui.tab === 'alltime') state.tab = ui.tab;
+    if (typeof ui.query === 'string') state.query = ui.query;
+    if (ui.metric === 's' || ui.metric === 'f') state.metric = ui.metric;
+    if (ui.mode === 'level' || ui.mode === 'delta') state.mode = ui.mode;
+    if (['all', '24h', '7d', '30d', '90d'].indexOf(ui.range) !== -1) state.range = ui.range;
+    if (ui.openId) state.openId = String(ui.openId);
+    if (ui.scroll && typeof ui.scroll === 'object') {
+      state.scroll = {
+        list: Number(ui.scroll.list) || 0,
+        detail: Number(ui.scroll.detail) || 0
+      };
+    }
+
+    els.search.value = state.query;
+    els.rangeSelect.value = state.range;
+    syncSegmented('#metric-toggle', 'data-metric', state.metric);
+    syncSegmented('#mode-toggle', 'data-mode', state.mode);
+    syncTabs();
+  }
+
+  function persistUi() {
+    Store.saveUi({
+      tab: state.tab,
+      query: state.query,
+      openId: state.openId,
+      metric: state.metric,
+      mode: state.mode,
+      range: state.range,
+      scroll: state.scroll
+    });
+  }
+
+  function schedulePersist() {
+    if (uiSaveTimer) return;
+    uiSaveTimer = global.setTimeout(function () {
+      uiSaveTimer = 0;
+      persistUi();
+    }, 250);
+  }
+
+  function currentScrollY() {
+    return global.scrollY || (document.documentElement && document.documentElement.scrollTop) || 0;
+  }
+
+  function viewKey() {
+    return state.openId ? 'detail' : 'list';
+  }
+
+  function scrollToView(which) {
+    var y = (state.scroll && state.scroll[which]) || 0;
+    if (global.scrollTo) global.scrollTo({ top: y, behavior: 'smooth' });
+  }
+
+  function restoreScroll() {
+    var y = (state.scroll && state.scroll[viewKey()]) || 0;
+    if (y && global.scrollTo) global.scrollTo(0, y);
+  }
+
   function openDetail(id) {
     state.openId = String(id);
-    state.range = 'all';
-    state.mode = 'level';
-    els.rangeSelect.value = 'all';
-    syncSegmented('#mode-toggle', 'data-mode', 'level');
     render();
-    if (global.scrollTo) global.scrollTo({ top: 0, behavior: 'smooth' });
+    persistUi();
+    scrollToView('detail');
   }
 
   function closeDetail() {
     state.openId = null;
     render();
+    persistUi();
+    scrollToView('list');
   }
 
   function openSettings() {
@@ -779,6 +858,7 @@
     els.search.addEventListener('input', function () {
       state.query = els.search.value;
       if (!state.openId) renderList();
+      schedulePersist();
     });
 
     var tabs = document.querySelectorAll('.tab');
@@ -786,12 +866,9 @@
       tab.addEventListener('click', function () {
         state.tab = tab.getAttribute('data-tab');
         state.openId = null;
-        Array.prototype.forEach.call(tabs, function (other) {
-          var active = other === tab;
-          other.classList.toggle('is-active', active);
-          other.setAttribute('aria-selected', active ? 'true' : 'false');
-        });
+        syncTabs();
         render();
+        persistUi();
       });
     });
 
@@ -800,6 +877,7 @@
         state.metric = btn.getAttribute('data-metric');
         syncSegmented('#metric-toggle', 'data-metric', state.metric);
         renderChart();
+        persistUi();
       });
     });
 
@@ -808,13 +886,24 @@
         state.mode = btn.getAttribute('data-mode');
         syncSegmented('#mode-toggle', 'data-mode', state.mode);
         renderChart();
+        persistUi();
       });
     });
 
     els.rangeSelect.addEventListener('change', function () {
       state.range = els.rangeSelect.value;
       renderChart();
+      persistUi();
     });
+
+    global.addEventListener(
+      'scroll',
+      function () {
+        state.scroll[viewKey()] = currentScrollY();
+        schedulePersist();
+      },
+      { passive: true }
+    );
 
     els.repoList.addEventListener('click', function (ev) {
       var target = ev.target;
@@ -831,10 +920,12 @@
 
     state.settings = Store.getSettings();
     Api.setToken(state.settings.token);
+    restoreUi();
     state.cache = Store.getCache();
     state.history = Store.getSeries();
 
     render();
+    restoreScroll();
 
     if (isDue()) refresh();
 
