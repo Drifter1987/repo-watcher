@@ -50,13 +50,28 @@
     if (token) headers.Authorization = 'Bearer ' + token;
 
     var response;
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = controller
+      ? setTimeout(function () {
+          controller.abort();
+        }, 15000)
+      : 0;
+
     try {
-      response = await fetch(url, { headers: headers, cache: 'no-store' });
+      response = await fetch(url, {
+        headers: headers,
+        cache: 'no-store',
+        signal: controller ? controller.signal : undefined
+      });
     } catch (err) {
       throw makeError(
-        'Could not reach api.github.com. Check the connection, then refresh.',
+        err && err.name === 'AbortError'
+          ? 'GitHub did not answer in time. Check the connection, then refresh.'
+          : 'Could not reach api.github.com. Check the connection, then refresh.',
         'NetworkError'
       );
+    } finally {
+      if (timer) clearTimeout(timer);
     }
 
     if (!response.ok) {

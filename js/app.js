@@ -307,7 +307,7 @@
       if (entry && Array.isArray(entry.points)) points += entry.points.length;
     });
     els.trackedCount.textContent =
-      ids.length + (ids.length === 1 ? ' repo' : ' repos') + ' · ' + points + ' snapshots';
+      ids.length + ' tracked · ' + points + ' snapshots';
 
     if (state.rate && state.rate.search) {
       els.quota.hidden = false;
@@ -445,14 +445,21 @@
       ariaLabel: label + ' of ' + repo.name + ' over time'
     });
 
-    els.chartNote.textContent = all.length
-      ? 'Tracking since ' +
+    if (!all.length) {
+      els.chartNote.textContent = 'No history yet — the first snapshot is stored with the next sync.';
+    } else if (all.length === 1) {
+      els.chartNote.textContent =
+        'Tracking since ' +
+        dateTime(all[0].t) +
+        ' · one snapshot so far; growth appears after the next 12-hour refresh.';
+    } else {
+      els.chartNote.textContent =
+        'Tracking since ' +
         dateTime(all[0].t) +
         ' · ' +
         all.length +
-        (all.length === 1 ? ' snapshot' : ' snapshots') +
-        ' · updates every 12 hours'
-      : 'No history yet — the first snapshot is stored with the next sync.';
+        ' snapshots · updates every 12 hours';
+    }
   }
 
   function renderHistory() {
@@ -666,7 +673,7 @@
     state.refreshing = true;
     state.lastAttempt = Date.now();
     state.error = null;
-    renderChrome();
+    render();
 
     try {
       var payload = await Api.fetchDashboard();
