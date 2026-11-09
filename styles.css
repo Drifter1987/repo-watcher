@@ -20,8 +20,16 @@
 
 html, body { margin: 0; padding: 0; }
 
+/* Paint the canvas itself so any area the page does not cover (a safe-area
+   strip, the overscroll region) shows the theme background, never black. */
+html {
+  background: var(--bg);
+  height: 100%;
+}
+
 body {
-  padding-top: env(safe-area-inset-top);
+  /* The header paints the safe-area band itself, so no bare strip above it. */
+  padding-top: 0;
   padding-bottom: env(safe-area-inset-bottom);
   background:
     radial-gradient(1200px 620px at 50% -260px, rgba(120, 229, 183, 0.12), transparent 70%),
@@ -47,14 +55,14 @@ h1, h2 { margin: 0; color: var(--title); }
 
 .topbar {
   position: sticky;
-  top: env(safe-area-inset-top);
+  top: 0;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 0 10px;
-  background: rgba(6, 16, 11, 0.88);
+  padding: calc(14px + env(safe-area-inset-top)) 0 10px;
+  background: rgba(6, 16, 11, 0.99);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(242, 180, 91, 0.4);
@@ -149,6 +157,28 @@ h1, h2 { margin: 0; color: var(--title); }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Focus rings stay in the palette; touch taps do not leave a browser-blue
+   outline behind. */
+.btn:focus-visible,
+.tab:focus-visible,
+.segmented button:focus-visible,
+.search input:focus-visible,
+.select:focus-visible,
+.back:focus-visible,
+.repo-name:focus-visible,
+.repo-title:focus-visible {
+  outline: 2px solid rgba(120, 229, 183, 0.7);
+  outline-offset: 2px;
+}
+
+.btn:focus:not(:focus-visible),
+.tab:focus:not(:focus-visible),
+.segmented button:focus:not(:focus-visible),
+.back:focus:not(:focus-visible),
+.search input:focus:not(:focus-visible) {
+  outline: none;
+}
 
 /* ---------- status bar ---------- */
 
@@ -261,7 +291,8 @@ h1, h2 { margin: 0; color: var(--title); }
   background: none;
   color: var(--text);
   font: inherit;
-  font-size: 13.5px;
+  /* 16px keeps iOS from zooming the page when the field is focused. */
+  font-size: 16px;
 }
 
 .search input::placeholder { color: var(--faint); }
@@ -348,7 +379,7 @@ h1, h2 { margin: 0; color: var(--title); }
   margin: 3px 0 0;
   font-size: 12.8px;
   line-height: 1.45;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.88);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -787,7 +818,7 @@ h1, h2 { margin: 0; color: var(--title); }
   background: #06100b;
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .sheet-row {
@@ -811,7 +842,7 @@ h1, h2 { margin: 0; color: var(--title); }
 }
 
 @media (max-width: 400px) {
-  .topbar { padding-top: 10px; }
+  .topbar { padding-top: calc(10px + env(safe-area-inset-top)); }
   .repo { grid-template-columns: 20px 1fr; }
   .repo-stats {
     flex-direction: row;

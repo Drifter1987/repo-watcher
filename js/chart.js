@@ -157,6 +157,25 @@
 
       // horizontal grid and value labels
       var rows = 4;
+      var axisStep = (yMax - yMin) / rows;
+
+      // Keep neighbouring labels distinguishable: with a small span, one
+      // decimal of a "k" value would round two ticks to the same text.
+      function formatAxis(value) {
+        var unit = 1;
+        var suffix = '';
+        if (Math.abs(value) >= 1e6) {
+          unit = 1e6;
+          suffix = 'M';
+        } else if (Math.abs(value) >= 1e3) {
+          unit = 1e3;
+          suffix = 'k';
+        }
+        var scaledStep = axisStep / unit;
+        var decimals = unit === 1 ? (axisStep >= 1 ? 0 : 2) : scaledStep >= 1 ? 1 : 2;
+        return (value / unit).toFixed(decimals) + suffix;
+      }
+
       for (var i = 0; i <= rows; i++) {
         var value = yMin + ((yMax - yMin) * i) / rows;
         var gy = sy(value);
@@ -174,10 +193,10 @@
           x: pad.left - 8,
           y: gy + 3.5,
           'text-anchor': 'end',
-          fill: 'rgba(147,161,177,0.85)',
+          fill: 'rgba(185,205,192,0.85)',
           'font-size': 10
         });
-        tickLabel.textContent = cfg.formatValue(value);
+        tickLabel.textContent = formatAxis(value);
         svg.appendChild(tickLabel);
       }
 
@@ -191,7 +210,7 @@
           x: tx,
           y: height - 8,
           'text-anchor': anchor,
-          fill: 'rgba(147,161,177,0.85)',
+          fill: 'rgba(185,205,192,0.85)',
           'font-size': 10
         });
         timeLabel.textContent = cfg.formatTime(t, xMax - xMin);
